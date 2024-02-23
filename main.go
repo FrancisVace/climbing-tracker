@@ -146,17 +146,20 @@ func (a *App) cleanBranchMap() {
 }
 
 func (a *App) getAllBranches(context *gin.Context) {
+	for name, id := range a.getBranchIds() {
+		data := branchData{}
+		r, err := http.Get(fmt.Sprintf("%s%s", url, id))
+		if err != nil {
+			log.Println(err)
+		}
+		defer r.Body.Close()
 
-	data := branchData{}
-	r, err := http.Get(fmt.Sprintf("%s%s", url, a.getBranchIds()[miltonName]))
-	if err != nil {
-		log.Println(err)
+		json.NewDecoder(r.Body).Decode(&data)
+		i := append(a.data[name], data)
+		a.data[name] = i
 	}
-	defer r.Body.Close()
 
-	json.NewDecoder(r.Body).Decode(&data)
-
-	context.IndentedJSON(http.StatusOK, data)
+	context.IndentedJSON(http.StatusOK, a.data)
 }
 
 type album struct {
