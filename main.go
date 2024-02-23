@@ -17,6 +17,7 @@ package main
 import (
 	"context"
 	"fmt"
+	"github.com/gin-gonic/gin"
 	"log"
 	"net/http"
 	"os"
@@ -25,7 +26,6 @@ import (
 
 	"cloud.google.com/go/logging"
 	"example.com/micro/metadata"
-	"github.com/gorilla/mux"
 	"google.golang.org/api/option"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials/insecure"
@@ -67,7 +67,10 @@ func main() {
 	// for more details.
 	ctx, cancel := context.WithTimeout(ctx, 10*time.Second)
 	defer cancel()
-	app.Shutdown(ctx)
+	err = app.Shutdown(ctx)
+	if err != nil {
+		return
+	}
 	log.Println("shutdown")
 }
 
@@ -103,10 +106,14 @@ func newApp(ctx context.Context, port, projectID string) (*App, error) {
 	app.log = client.Logger("test-log", logging.RedirectAsJSON(os.Stderr))
 
 	// Setup request router.
-	r := mux.NewRouter()
+	/*r := mux.NewRouter()
 	r.HandleFunc("/", app.Handler).
 		Methods("GET")
-	app.Server.Handler = r
+	app.Server.Handler = r*/
+
+	router := gin.Default()
+	router.GET("/", app.HandlerGin)
+	app.Server.Handler = router
 
 	return app, nil
 }

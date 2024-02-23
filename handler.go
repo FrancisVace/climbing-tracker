@@ -16,6 +16,7 @@ package main
 
 import (
 	"fmt"
+	"github.com/gin-gonic/gin"
 	"net/http"
 
 	"cloud.google.com/go/logging"
@@ -30,5 +31,22 @@ func (a *App) Handler(w http.ResponseWriter, r *http.Request) {
 		Labels:  map[string]string{"arbitraryField": "custom entry"},
 		Payload: "Structured logging example.",
 	})
-	fmt.Fprintf(w, "Hello World!\n")
+	_, err := fmt.Fprintf(w, "Hello World!\n")
+	if err != nil {
+		return
+	}
+}
+func (a *App) HandlerGin(context *gin.Context) {
+	a.log.Log(logging.Entry{
+		Severity: logging.Info,
+		HTTPRequest: &logging.HTTPRequest{
+			Request: context.Request,
+		},
+		Labels:  map[string]string{"arbitraryField": "custom entry"},
+		Payload: "Structured logging example.",
+	})
+	_, err := fmt.Fprintf(context.Writer, "Hello World!\n")
+	if err != nil {
+		return
+	}
 }
