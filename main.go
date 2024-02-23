@@ -16,6 +16,7 @@ package main
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"github.com/gin-gonic/gin"
 	"log"
@@ -35,6 +36,7 @@ type App struct {
 	*http.Server
 	projectID string
 	log       *logging.Logger
+	data      map[string][]branchData
 }
 
 func main() {
@@ -62,7 +64,7 @@ func main() {
 	<-nctx.Done()
 	log.Println("shutdown initiated")
 
-	// Cloud Run gives apps 10 seconds to shutdown. See
+	// Cloud Run gives apps 10 seconds to shut down. See
 	// https://cloud.google.com/blog/topics/developers-practitioners/graceful-shutdowns-cloud-run-deep-dive
 	// for more details.
 	ctx, cancel := context.WithTimeout(ctx, 10*time.Second)
@@ -84,6 +86,7 @@ func newApp(ctx context.Context, port, projectID string) (*App, error) {
 			MaxHeaderBytes: 1 << 20,
 		},
 	}
+	app.cleanBranchMap()
 
 	if projectID == "" {
 		projID, err := metadata.ProjectID()
@@ -114,9 +117,46 @@ func newApp(ctx context.Context, port, projectID string) (*App, error) {
 	router := gin.Default()
 	router.GET("/", app.HandlerGin)
 	router.GET("/albums", getAlbums)
+	router.GET("/branches", app.getAllBranches)
 	app.Server.Handler = router
 
 	return app, nil
+}
+
+const westendName = "westend"
+const miltonName = "milton"
+const newsteadName = "newstead"
+
+const url = "https://portal.urbanclimb.com.au/uc-services/ajax/gym/occupancy.ashx?branch="
+
+func (a *App) getBranchIds() map[string]string {
+	return map[string]string{
+		westendName:  "D969F1B2-0C9F-49A9-B2AC-D7775642F298",
+		miltonName:   "690326F9-98CE-4249-BD91-53A0676A137B",
+		newsteadName: "A3010228-DFC6-4317-86C0-3839FFDF3FD0",
+	}
+}
+
+func (a *App) cleanBranchMap() {
+	a.data = map[string][]branchData{
+		westendName:  make([]branchData, 0),
+		miltonName:   make([]branchData, 0),
+		newsteadName: make([]branchData, 0),
+	}
+}
+
+func (a *App) getAllBranches(context *gin.Context) {
+
+	data := branchData{}
+	r, err := http.Get(fmt.Sprintf("%s%s", url, a.getBranchIds()[miltonName]))
+	if err != nil {
+		log.Println(err)
+	}
+	defer r.Body.Close()
+
+	json.NewDecoder(r.Body).Decode(&data)
+
+	context.IndentedJSON(http.StatusOK, data)
 }
 
 type album struct {
@@ -136,4 +176,23 @@ var albums = []album{
 // getAlbums responds with the list of all albums as JSON.
 func getAlbums(c *gin.Context) {
 	c.IndentedJSON(http.StatusOK, albums)
+}
+
+type branchData struct {
+	LastUpdated       time.Time     `json:"LastUpdated"`
+	Name              string        `json:"Name"`
+	Current           int           `json:"Current"`
+	Leaving           int           `json:"Leaving"`
+	Allowed           int           `json:"Allowed"`
+	Bookings          int           `json:"Bookings"`
+	Capacity          int           `json:"Capacity"`
+	Offset            int           `json:"Offset"`
+	GoogleStatus      string        `json:"GoogleStatus"`
+	Remaining         int           `json:"Remaining"`
+	Status            string        `json:"Status"`
+	Colour            string        `json:"Colour"`
+	CurrentPercentage float64       `json:"CurrentPercentage"`
+	FontColour        string        `json:"FontColour"`
+	WaitingTime       string        `json:"WaitingTime"`
+	KidsNames         []interface{} `json:"KidsNames"`
 }
