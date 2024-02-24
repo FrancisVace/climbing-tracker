@@ -37,6 +37,7 @@ type App struct {
 	projectID string
 	log       *logging.Logger
 	data      map[string][]branchData
+	expected  map[string][]expectedAttendance
 }
 
 func main() {
@@ -141,6 +142,8 @@ func newApp(ctx context.Context, port, projectID string) (*App, error) {
 	router.GET("/", app.HandlerGin)
 	router.GET("/albums", getAlbums)
 	router.GET("/branches", app.getAllBranches)
+	router.GET("/branches/force", app.getAllBranches)
+	router.GET("/test/attendance", app.testAttendance)
 	app.Server.Handler = router
 
 	return app, nil
@@ -150,7 +153,8 @@ const westendName = "westend"
 const miltonName = "milton"
 const newsteadName = "newstead"
 
-const url = "https://portal.urbanclimb.com.au/uc-services/ajax/gym/occupancy.ashx?branch="
+const dataUrl = "https://portal.urbanclimb.com.au/uc-services/ajax/gym/occupancy.ashx?branch="
+const expectedUrl = "https://api-prod.urbanclimb.com.au/widgets/trendline-data?branch="
 
 func (a *App) getBranchIds() map[string]string {
 	return map[string]string{
@@ -168,10 +172,18 @@ func (a *App) cleanBranchMap() {
 	}
 }
 
+func (a *App) initExpected() {
+	a.expected = map[string][]expectedAttendance{
+		westendName:  make([]expectedAttendance, 0),
+		miltonName:   make([]expectedAttendance, 0),
+		newsteadName: make([]expectedAttendance, 0),
+	}
+}
+
 func (a *App) retrieveBranchData() {
 	for name, id := range a.getBranchIds() {
 		data := branchData{}
-		r, err := http.Get(fmt.Sprintf("%s%s", url, id))
+		r, err := http.Get(fmt.Sprintf("%s%s", dataUrl, id))
 		if err != nil {
 			log.Println(err)
 		}
@@ -184,9 +196,12 @@ func (a *App) retrieveBranchData() {
 			if recentData.LastUpdated == data.LastUpdated {
 				continue
 			}
-			// if we have new data with a large gap, assume new day and clear previous data
+			// if we have new data with a large gap, assume new day
 			if recentData.LastUpdated.After(data.LastUpdated.Add(2 * time.Hour)) {
+				// clear previous data
 				a.cleanBranchMap()
+				// get expected attendance for new day
+				go a.retrieveExpectedAttendance()
 			}
 		}
 
@@ -196,7 +211,31 @@ func (a *App) retrieveBranchData() {
 	}
 }
 
+func (a *App) retrieveExpectedAttendance() {
+	a.initExpected()
+	for name, id := range a.getBranchIds() {
+		data := make([]expectedAttendance, 16)
+		r, err := http.Get(fmt.Sprintf("%s%s", expectedUrl, id))
+		if err != nil {
+			log.Println(err)
+		}
+		json.NewDecoder(r.Body).Decode(&data)
+		a.expected[name] = data
+		r.Body.Close()
+	}
+}
+
+func (a *App) testAttendance(context *gin.Context) {
+	a.retrieveExpectedAttendance()
+	context.IndentedJSON(http.StatusOK, a.expected)
+}
+
 func (a *App) getAllBranches(context *gin.Context) {
+	context.IndentedJSON(http.StatusOK, a.data)
+}
+
+func (a *App) forceAllBranches(context *gin.Context) {
+	a.retrieveBranchData()
 	context.IndentedJSON(http.StatusOK, a.data)
 }
 
@@ -236,4 +275,11 @@ type branchData struct {
 	FontColour        string        `json:"FontColour"`
 	WaitingTime       string        `json:"WaitingTime"`
 	KidsNames         []interface{} `json:"KidsNames"`
+}
+
+type expectedAttendance struct {
+	Hour       int    `json:"hour"`
+	Percentage int    `json:"percantage"`
+	Remaining  int    `json:"remaining"`
+	Colour     string `json:"colour"`
 }
