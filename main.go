@@ -52,10 +52,10 @@ func main() {
 		log.Fatalf("unable to initialize application: %v", err)
 	}
 
-	ticker := time.NewTicker(1 * time.Minute)
-	quit := make(chan struct{})
+	go app.scheduleRetrieval()
 
-	go func() {
+	/*go func() {
+
 		for {
 			select {
 			case _ = <-ticker.C:
@@ -65,7 +65,7 @@ func main() {
 				return
 			}
 		}
-	}()
+	}()*/
 
 	log.Println("starting HTTP server")
 	go func() {
@@ -90,6 +90,13 @@ func main() {
 		return
 	}
 	log.Println("shutdown")
+}
+
+func (a *App) scheduleRetrieval() {
+	ticker := time.NewTicker(1 * time.Minute)
+	for _ = range ticker.C {
+		a.retrieveBranchData()
+	}
 }
 
 func newApp(ctx context.Context, port, projectID string) (*App, error) {
