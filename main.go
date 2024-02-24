@@ -109,12 +109,16 @@ func newApp(ctx context.Context, port, projectID string) (*App, error) {
 	app.log = client.Logger("test-log", logging.RedirectAsJSON(os.Stderr))
 
 	ticker := time.NewTicker(1 * time.Minute)
+	quit := make(chan struct{})
 
 	go func() {
 		for {
 			select {
 			case _ = <-ticker.C:
 				app.retrieveBranchData()
+			case <-quit:
+				ticker.Stop()
+				return
 			}
 		}
 	}()
