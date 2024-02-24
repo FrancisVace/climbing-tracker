@@ -108,6 +108,17 @@ func newApp(ctx context.Context, port, projectID string) (*App, error) {
 	}
 	app.log = client.Logger("test-log", logging.RedirectAsJSON(os.Stderr))
 
+	ticker := time.NewTicker(1 * time.Minute)
+
+	go func() {
+		for {
+			select {
+			case _ = <-ticker.C:
+				app.retrieveBranchData()
+			}
+		}
+	}()
+
 	// Setup request router.
 	/*r := mux.NewRouter()
 	r.HandleFunc("/", app.Handler).
@@ -145,20 +156,21 @@ func (a *App) cleanBranchMap() {
 	}
 }
 
-func (a *App) getAllBranches(context *gin.Context) {
+func (a *App) retrieveBranchData() {
 	for name, id := range a.getBranchIds() {
 		data := branchData{}
 		r, err := http.Get(fmt.Sprintf("%s%s", url, id))
 		if err != nil {
 			log.Println(err)
 		}
-		defer r.Body.Close()
-
 		json.NewDecoder(r.Body).Decode(&data)
 		i := append(a.data[name], data)
 		a.data[name] = i
+		r.Body.Close()
 	}
+}
 
+func (a *App) getAllBranches(context *gin.Context) {
 	context.IndentedJSON(http.StatusOK, a.data)
 }
 
