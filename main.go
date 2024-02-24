@@ -93,8 +93,8 @@ func main() {
 }
 
 func (a *App) scheduleRetrieval() {
-	ticker := time.NewTicker(1 * time.Minute)
-	for _ = range ticker.C {
+	ticker := time.NewTicker(15 * time.Minute)
+	for range ticker.C {
 		a.retrieveBranchData()
 	}
 }
@@ -176,6 +176,20 @@ func (a *App) retrieveBranchData() {
 			log.Println(err)
 		}
 		json.NewDecoder(r.Body).Decode(&data)
+
+		// check we have existing data, no need to compare if no data exists
+		if len(a.data[name]) > 0 {
+			recentData := a.data[name][len(a.data[name])-1]
+			// don't bother recording if no new data
+			if recentData.LastUpdated == data.LastUpdated {
+				continue
+			}
+			// if we have new data with a large gap, assume new day and clear previous data
+			if recentData.LastUpdated.After(data.LastUpdated.Add(2 * time.Hour)) {
+				a.cleanBranchMap()
+			}
+		}
+
 		i := append(a.data[name], data)
 		a.data[name] = i
 		r.Body.Close()
