@@ -142,7 +142,7 @@ func newApp(ctx context.Context, port, projectID string) (*App, error) {
 	router.GET("/", app.HandlerGin)
 	router.GET("/albums", getAlbums)
 	router.GET("/branches", app.getAllBranches)
-	router.GET("/branches/force", app.getAllBranches)
+	router.GET("/branches/force", app.forceAllBranches)
 	router.GET("/test/attendance", app.testAttendance)
 	app.Server.Handler = router
 
