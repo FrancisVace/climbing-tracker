@@ -51,6 +51,22 @@ func main() {
 	if err != nil {
 		log.Fatalf("unable to initialize application: %v", err)
 	}
+
+	ticker := time.NewTicker(1 * time.Minute)
+	quit := make(chan struct{})
+
+	go func() {
+		for {
+			select {
+			case _ = <-ticker.C:
+				app.retrieveBranchData()
+			case <-quit:
+				ticker.Stop()
+				return
+			}
+		}
+	}()
+
 	log.Println("starting HTTP server")
 	go func() {
 		if err := app.ListenAndServe(); err != nil && err != http.ErrServerClosed {
@@ -107,21 +123,6 @@ func newApp(ctx context.Context, port, projectID string) (*App, error) {
 		return nil, fmt.Errorf("unable to initialize logging client: %v", err)
 	}
 	app.log = client.Logger("test-log", logging.RedirectAsJSON(os.Stderr))
-
-	ticker := time.NewTicker(1 * time.Minute)
-	quit := make(chan struct{})
-
-	go func() {
-		for {
-			select {
-			case _ = <-ticker.C:
-				app.retrieveBranchData()
-			case <-quit:
-				ticker.Stop()
-				return
-			}
-		}
-	}()
 
 	// Setup request router.
 	/*r := mux.NewRouter()
