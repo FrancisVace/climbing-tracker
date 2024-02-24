@@ -278,8 +278,8 @@ type branchData struct {
 }
 
 type expectedAttendance struct {
-	Hour       int    `json:"hour"`
-	Percentage int    `json:"percantage"`
-	Remaining  int    `json:"remaining"`
-	Colour     string `json:"colour"`
+	Hour       int     `json:"hour"`
+	Percentage float64 `json:"percantage"`
+	Remaining  float64 `json:"remaining"`
+	Colour     string  `json:"colour"`
 }
