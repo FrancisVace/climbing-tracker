@@ -259,27 +259,14 @@ func getAlbums(c *gin.Context) {
 }
 
 type branchData struct {
-	LastUpdated       time.Time     `json:"LastUpdated"`
-	Name              string        `json:"Name"`
-	Current           int           `json:"Current"`
-	Leaving           int           `json:"Leaving"`
-	Allowed           int           `json:"Allowed"`
-	Bookings          int           `json:"Bookings"`
-	Capacity          int           `json:"Capacity"`
-	Offset            int           `json:"Offset"`
-	GoogleStatus      string        `json:"GoogleStatus"`
-	Remaining         int           `json:"Remaining"`
-	Status            string        `json:"Status"`
-	Colour            string        `json:"Colour"`
-	CurrentPercentage float64       `json:"CurrentPercentage"`
-	FontColour        string        `json:"FontColour"`
-	WaitingTime       string        `json:"WaitingTime"`
-	KidsNames         []interface{} `json:"KidsNames"`
+	LastUpdated       time.Time `json:"LastUpdated"`
+	Name              string    `json:"Name"`
+	Status            string    `json:"Status"`
+	CurrentPercentage float64   `json:"CurrentPercentage"`
 }
 
 type expectedAttendance struct {
 	Hour       int     `json:"hour"`
 	Percentage float64 `json:"percantage"`
 	Remaining  float64 `json:"remaining"`
-	Colour     string  `json:"colour"`
 }
