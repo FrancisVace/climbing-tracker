@@ -195,7 +195,7 @@ func (a *App) retrieveAndStoreBranchData(context *gin.Context) {
 		json.NewDecoder(r.Body).Decode(&data)
 
 		qry := fmt.Sprintf("INSERT INTO `branch-data`.`branch_data`(`branch-id`, `last-updated`, `name`, `status`, `current-percentage`) VALUES ('%s', '%s', '%s', '%s', '%s')",
-			a.getBranchSQLIds()[name],
+			strconv.Itoa(a.getBranchSQLIds()[name]),
 			data.LastUpdated.Format("2024-01-02 15:04:05"),
 			data.Name,
 			data.Status,
