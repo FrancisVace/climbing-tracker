@@ -43,8 +43,6 @@ type App struct {
 	*http.Server
 	projectID string
 	log       *logging.Logger
-	data      map[string][]branchData
-	expected  map[string][]expectedAttendance
 	db        *sql.DB
 }
 
@@ -96,7 +94,6 @@ func newApp(ctx context.Context, port, projectID string) (*App, error) {
 			MaxHeaderBytes: 1 << 20,
 		},
 	}
-	app.cleanBranchMap()
 	app.getDatabase()
 
 	if projectID == "" {
@@ -128,8 +125,7 @@ func newApp(ctx context.Context, port, projectID string) (*App, error) {
 	router := gin.Default()
 	router.GET("/", app.HandlerGin)
 	router.GET("/albums", getAlbums)
-	router.GET("/branches", app.getAllBranches)
-	router.GET("/test/attendance", app.testAttendance)
+	router.GET("/attendance/store", app.retrieveAndStoreExpectedAttendance)
 	router.GET("/branches/store", app.retrieveAndStoreBranchData)
 	app.Server.Handler = router
 
@@ -167,25 +163,8 @@ func (a *App) getDatabase() {
 	a.db = db
 }
 
-func (a *App) cleanBranchMap() {
-	a.data = map[string][]branchData{
-		westendName:  make([]branchData, 0),
-		miltonName:   make([]branchData, 0),
-		newsteadName: make([]branchData, 0),
-	}
-}
-
-func (a *App) initExpected() {
-	a.expected = map[string][]expectedAttendance{
-		westendName:  make([]expectedAttendance, 0),
-		miltonName:   make([]expectedAttendance, 0),
-		newsteadName: make([]expectedAttendance, 0),
-	}
-}
-
 func (a *App) retrieveAndStoreBranchData(context *gin.Context) {
 	var err error
-	var queries string
 	for name, id := range a.getBranchIds() {
 		data := branchData{}
 		r, err := http.Get(fmt.Sprintf("%s%s", dataUrl, id))
@@ -196,11 +175,10 @@ func (a *App) retrieveAndStoreBranchData(context *gin.Context) {
 
 		qry := fmt.Sprintf("INSERT INTO `branch-data`.`branch_data`(`branch-id`, `last-updated`, `name`, `status`, `current-percentage`) VALUES ('%s', '%s', '%s', '%s', '%s')",
 			strconv.Itoa(a.getBranchSQLIds()[name]),
-			data.LastUpdated.Format("2006-01-02 15:04:05"),
+			data.LastUpdated.Add(10*time.Hour).Format("2006-01-02 15:04:05"),
 			data.Name,
 			data.Status,
 			strconv.FormatFloat(data.CurrentPercentage, 'f', -1, 64))
-		queries += " " + qry
 		_, err = a.db.Query(qry)
 		if err != nil {
 			log.Println(err)
@@ -211,12 +189,12 @@ func (a *App) retrieveAndStoreBranchData(context *gin.Context) {
 	if err != nil {
 		context.IndentedJSON(http.StatusInternalServerError, err)
 	} else {
-		context.IndentedJSON(http.StatusOK, "Store Succeeded"+queries)
+		context.IndentedJSON(http.StatusOK, "Store Succeeded")
 	}
 }
 
-func (a *App) retrieveExpectedAttendance() {
-	a.initExpected()
+func (a *App) retrieveAndStoreExpectedAttendance(context *gin.Context) {
+	var err error
 	for name, id := range a.getBranchIds() {
 		data := make([]expectedAttendance, 16)
 		r, err := http.Get(fmt.Sprintf("%s%s", expectedUrl, id))
@@ -224,18 +202,24 @@ func (a *App) retrieveExpectedAttendance() {
 			log.Println(err)
 		}
 		json.NewDecoder(r.Body).Decode(&data)
-		a.expected[name] = data
+
+		for _, hour := range data {
+			qry := fmt.Sprintf("INSERT INTO `branch-data`.`expected_attendance`(`branch-id`, `hour`, `percentage`) VALUES ('%s', '%s', '%s')",
+				strconv.Itoa(a.getBranchSQLIds()[name]),
+				strconv.Itoa(hour.Hour),
+				strconv.FormatFloat(hour.Percentage, 'f', -1, 64))
+			_, err = a.db.Query(qry)
+			if err != nil {
+				log.Println(err)
+			}
+		}
 		r.Body.Close()
 	}
-}
-
-func (a *App) testAttendance(context *gin.Context) {
-	a.retrieveExpectedAttendance()
-	context.IndentedJSON(http.StatusOK, a.expected)
-}
-
-func (a *App) getAllBranches(context *gin.Context) {
-	context.IndentedJSON(http.StatusOK, a.data)
+	if err != nil {
+		context.IndentedJSON(http.StatusInternalServerError, err)
+	} else {
+		context.IndentedJSON(http.StatusOK, "Store Succeeded")
+	}
 }
 
 type album struct {
