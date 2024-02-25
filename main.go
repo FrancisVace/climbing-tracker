@@ -26,6 +26,7 @@ import (
 	"net/http"
 	"os"
 	"os/signal"
+	"strconv"
 	"time"
 
 	"cloud.google.com/go/cloudsqlconn"
@@ -184,6 +185,7 @@ func (a *App) initExpected() {
 
 func (a *App) retrieveAndStoreBranchData(context *gin.Context) {
 	var err error
+	var queries string
 	for name, id := range a.getBranchIds() {
 		data := branchData{}
 		r, err := http.Get(fmt.Sprintf("%s%s", dataUrl, id))
@@ -197,7 +199,8 @@ func (a *App) retrieveAndStoreBranchData(context *gin.Context) {
 			data.LastUpdated.Format("2024-01-02 15:04:05"),
 			data.Name,
 			data.Status,
-			data.CurrentPercentage)
+			strconv.FormatFloat(data.CurrentPercentage, 'f', -1, 64))
+		queries += " " + qry
 		_, err = a.db.Query(qry)
 		if err != nil {
 			log.Println(err)
@@ -208,7 +211,7 @@ func (a *App) retrieveAndStoreBranchData(context *gin.Context) {
 	if err != nil {
 		context.IndentedJSON(http.StatusInternalServerError, err)
 	} else {
-		context.IndentedJSON(http.StatusOK, "Store Succeeded")
+		context.IndentedJSON(http.StatusOK, "Store Succeeded"+queries)
 	}
 }
 
