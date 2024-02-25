@@ -193,9 +193,20 @@ func (a *App) retrieveAndStoreBranchData(context *gin.Context) {
 	}
 }
 
+// this is expected to be run once at the start of the day
 func (a *App) retrieveAndStoreExpectedAttendance(context *gin.Context) {
 	var err error
+	// delete all existing data
+	deleteQuery := "DELETE FROM `branch-data`.`expected_attendance`"
+	_, err = a.db.Query(deleteQuery)
+	if err != nil {
+		log.Println(err)
+	}
+
+	// for each branch
 	for name, id := range a.getBranchIds() {
+		// get the expected attendance for UC
+		// could theoretically do this each time the trend is requested, but this feels more polite
 		data := make([]expectedAttendance, 16)
 		r, err := http.Get(fmt.Sprintf("%s%s", expectedUrl, id))
 		if err != nil {
