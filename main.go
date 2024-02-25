@@ -196,7 +196,7 @@ func (a *App) retrieveAndStoreBranchData(context *gin.Context) {
 
 		qry := fmt.Sprintf("INSERT INTO `branch-data`.`branch_data`(`branch-id`, `last-updated`, `name`, `status`, `current-percentage`) VALUES ('%s', '%s', '%s', '%s', '%s')",
 			strconv.Itoa(a.getBranchSQLIds()[name]),
-			data.LastUpdated.Format("2024-01-02 15:04:05"),
+			data.LastUpdated.Format("2006-01-02 15:04:05"),
 			data.Name,
 			data.Status,
 			strconv.FormatFloat(data.CurrentPercentage, 'f', -1, 64))
