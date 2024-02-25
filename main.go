@@ -194,7 +194,7 @@ func (a *App) retrieveAndStoreBranchData(context *gin.Context) {
 
 		qry := fmt.Sprintf("INSERT INTO `branch-data`.`branch_data`(`branch-id`, `last-updated`, `name`, `status`, `current-percentage`) VALUES ('%s', '%s', '%s', '%s', '%s')",
 			a.getBranchSQLIds()[name],
-			data.LastUpdated,
+			data.LastUpdated.Format("2024-01-02 15:04:05"),
 			data.Name,
 			data.Status,
 			data.CurrentPercentage)
@@ -275,20 +275,12 @@ func connectWithConnector() (*sql.DB, error) {
 		}
 		return v
 	}
-	// Note: Saving credentials in environment variables is convenient, but not
-	// secure - consider a more secure solution such as
-	// Cloud Secret Manager (https://cloud.google.com/secret-manager) to help
-	// keep passwords and other secrets safe.
 	var (
 		dbUser                 = mustGetenv("DB_USER")                  // e.g. 'my-db-user'
 		dbPwd                  = mustGetenv("DB_PASS")                  // e.g. 'my-db-password'
 		dbName                 = mustGetenv("DB_NAME")                  // e.g. 'my-database'
 		instanceConnectionName = mustGetenv("INSTANCE_CONNECTION_NAME") // e.g. 'project:region:instance'
-		/*dbUser                 = "root"                                     // e.g. 'my-db-user'
-		dbPwd                  = "UCUEB:G?i\"[e_Lvn"                        // e.g. 'my-db-password'
-		dbName                 = "branch-data"                              // e.g. 'my-database'
-		instanceConnectionName = "durable-will-414708:us-central1:climb-db" // e.g. 'project:region:instance'*/
-		usePrivate = os.Getenv("PRIVATE_IP")
+		usePrivate             = os.Getenv("PRIVATE_IP")
 	)
 
 	d, err := cloudsqlconn.NewDialer(context.Background())
