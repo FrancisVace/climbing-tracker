@@ -16,20 +16,26 @@ package main
 
 import (
 	"context"
+	"database/sql"
 	"encoding/json"
 	"fmt"
 	"github.com/gin-gonic/gin"
+	"github.com/go-sql-driver/mysql"
 	"log"
+	"net"
 	"net/http"
 	"os"
 	"os/signal"
 	"time"
 
+	"cloud.google.com/go/cloudsqlconn"
 	"cloud.google.com/go/logging"
 	"example.com/micro/metadata"
 	"google.golang.org/api/option"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials/insecure"
+
+	_ "github.com/go-sql-driver/mysql"
 )
 
 type App struct {
@@ -38,6 +44,7 @@ type App struct {
 	log       *logging.Logger
 	data      map[string][]branchData
 	expected  map[string][]expectedAttendance
+	db        *sql.DB
 }
 
 func main() {
@@ -52,21 +59,6 @@ func main() {
 	if err != nil {
 		log.Fatalf("unable to initialize application: %v", err)
 	}
-
-	go app.scheduleRetrieval()
-
-	/*go func() {
-
-		for {
-			select {
-			case _ = <-ticker.C:
-				app.retrieveBranchData()
-			case <-quit:
-				ticker.Stop()
-				return
-			}
-		}
-	}()*/
 
 	log.Println("starting HTTP server")
 	go func() {
@@ -93,13 +85,6 @@ func main() {
 	log.Println("shutdown")
 }
 
-func (a *App) scheduleRetrieval() {
-	ticker := time.NewTicker(15 * time.Minute)
-	for range ticker.C {
-		a.retrieveBranchData()
-	}
-}
-
 func newApp(ctx context.Context, port, projectID string) (*App, error) {
 	app := &App{
 		Server: &http.Server{
@@ -111,6 +96,7 @@ func newApp(ctx context.Context, port, projectID string) (*App, error) {
 		},
 	}
 	app.cleanBranchMap()
+	app.getDatabase()
 
 	if projectID == "" {
 		projID, err := metadata.ProjectID()
@@ -142,8 +128,8 @@ func newApp(ctx context.Context, port, projectID string) (*App, error) {
 	router.GET("/", app.HandlerGin)
 	router.GET("/albums", getAlbums)
 	router.GET("/branches", app.getAllBranches)
-	router.GET("/branches/force", app.forceAllBranches)
 	router.GET("/test/attendance", app.testAttendance)
+	router.GET("/branches/store", app.retrieveAndStoreBranchData)
 	app.Server.Handler = router
 
 	return app, nil
@@ -164,6 +150,22 @@ func (a *App) getBranchIds() map[string]string {
 	}
 }
 
+func (a *App) getBranchSQLIds() map[string]int {
+	return map[string]int{
+		westendName:  0,
+		miltonName:   1,
+		newsteadName: 2,
+	}
+}
+
+func (a *App) getDatabase() {
+	db, err := connectWithConnector()
+	if err != nil {
+		log.Println(err)
+	}
+	a.db = db
+}
+
 func (a *App) cleanBranchMap() {
 	a.data = map[string][]branchData{
 		westendName:  make([]branchData, 0),
@@ -180,7 +182,8 @@ func (a *App) initExpected() {
 	}
 }
 
-func (a *App) retrieveBranchData() {
+func (a *App) retrieveAndStoreBranchData(context *gin.Context) {
+	var err error
 	for name, id := range a.getBranchIds() {
 		data := branchData{}
 		r, err := http.Get(fmt.Sprintf("%s%s", dataUrl, id))
@@ -189,25 +192,23 @@ func (a *App) retrieveBranchData() {
 		}
 		json.NewDecoder(r.Body).Decode(&data)
 
-		// check we have existing data, no need to compare if no data exists
-		if len(a.data[name]) > 0 {
-			recentData := a.data[name][len(a.data[name])-1]
-			// don't bother recording if no new data
-			if recentData.LastUpdated == data.LastUpdated {
-				continue
-			}
-			// if we have new data with a large gap, assume new day
-			if recentData.LastUpdated.After(data.LastUpdated.Add(2 * time.Hour)) {
-				// clear previous data
-				a.cleanBranchMap()
-				// get expected attendance for new day
-				go a.retrieveExpectedAttendance()
-			}
+		qry := fmt.Sprintf("INSERT INTO `branch-data`.`branch_data`(`branch-id`, `last-updated`, `name`, `status`, `current-percentage`) VALUES ('%s', '%s', '%s', '%s', '%s')",
+			a.getBranchSQLIds()[name],
+			data.LastUpdated,
+			data.Name,
+			data.Status,
+			data.CurrentPercentage)
+		_, err = a.db.Query(qry)
+		if err != nil {
+			log.Println(err)
 		}
 
-		i := append(a.data[name], data)
-		a.data[name] = i
 		r.Body.Close()
+	}
+	if err != nil {
+		context.IndentedJSON(http.StatusInternalServerError, err)
+	} else {
+		context.IndentedJSON(http.StatusOK, "Store Succeeded")
 	}
 }
 
@@ -231,11 +232,6 @@ func (a *App) testAttendance(context *gin.Context) {
 }
 
 func (a *App) getAllBranches(context *gin.Context) {
-	context.IndentedJSON(http.StatusOK, a.data)
-}
-
-func (a *App) forceAllBranches(context *gin.Context) {
-	a.retrieveBranchData()
 	context.IndentedJSON(http.StatusOK, a.data)
 }
 
@@ -269,4 +265,51 @@ type expectedAttendance struct {
 	Hour       int     `json:"hour"`
 	Percentage float64 `json:"percantage"`
 	Remaining  float64 `json:"remaining"`
+}
+
+func connectWithConnector() (*sql.DB, error) {
+	mustGetenv := func(k string) string {
+		v := os.Getenv(k)
+		if v == "" {
+			log.Fatalf("Fatal Error in connect_connector.go: %s environment variable not set.", k)
+		}
+		return v
+	}
+	// Note: Saving credentials in environment variables is convenient, but not
+	// secure - consider a more secure solution such as
+	// Cloud Secret Manager (https://cloud.google.com/secret-manager) to help
+	// keep passwords and other secrets safe.
+	var (
+		dbUser                 = mustGetenv("DB_USER")                  // e.g. 'my-db-user'
+		dbPwd                  = mustGetenv("DB_PASS")                  // e.g. 'my-db-password'
+		dbName                 = mustGetenv("DB_NAME")                  // e.g. 'my-database'
+		instanceConnectionName = mustGetenv("INSTANCE_CONNECTION_NAME") // e.g. 'project:region:instance'
+		/*dbUser                 = "root"                                     // e.g. 'my-db-user'
+		dbPwd                  = "UCUEB:G?i\"[e_Lvn"                        // e.g. 'my-db-password'
+		dbName                 = "branch-data"                              // e.g. 'my-database'
+		instanceConnectionName = "durable-will-414708:us-central1:climb-db" // e.g. 'project:region:instance'*/
+		usePrivate = os.Getenv("PRIVATE_IP")
+	)
+
+	d, err := cloudsqlconn.NewDialer(context.Background())
+	if err != nil {
+		return nil, fmt.Errorf("cloudsqlconn.NewDialer: %w", err)
+	}
+	var opts []cloudsqlconn.DialOption
+	if usePrivate != "" {
+		opts = append(opts, cloudsqlconn.WithPrivateIP())
+	}
+	mysql.RegisterDialContext("cloudsqlconn",
+		func(ctx context.Context, addr string) (net.Conn, error) {
+			return d.Dial(ctx, instanceConnectionName, opts...)
+		})
+
+	dbURI := fmt.Sprintf("%s:%s@cloudsqlconn(localhost:3306)/%s?parseTime=true",
+		dbUser, dbPwd, dbName)
+
+	dbPool, err := sql.Open("mysql", dbURI)
+	if err != nil {
+		return nil, fmt.Errorf("sql.Open: %w", err)
+	}
+	return dbPool, nil
 }
