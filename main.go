@@ -116,16 +116,11 @@ func newApp(ctx context.Context, port, projectID string) (*App, error) {
 	}
 	app.log = client.Logger("test-log", logging.RedirectAsJSON(os.Stderr))
 
-	// Setup request router.
-	/*r := mux.NewRouter()
-	r.HandleFunc("/", app.Handler).
-		Methods("GET")
-	app.Server.Handler = r*/
-
 	router := gin.Default()
 	router.GET("/", app.HandlerGin)
 	router.GET("/albums", getAlbums)
 	router.GET("/attendance/store", app.retrieveAndStoreExpectedAttendance)
+	router.GET("/attendance", app.getExpectedAttendance)
 	router.GET("/branches/store", app.retrieveAndStoreBranchData)
 	router.GET("/branches", app.getBranchData)
 	app.Server.Handler = router
@@ -328,7 +323,6 @@ type branchData struct {
 type expectedAttendance struct {
 	Hour       int     `json:"hour"`
 	Percentage float64 `json:"percantage"`
-	//Remaining  float64 `json:"remaining"`
 }
 
 func connectWithConnector() (*sql.DB, error) {
