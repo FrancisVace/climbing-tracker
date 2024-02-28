@@ -156,6 +156,14 @@ func (a *App) getBranchSQLIds() map[string]int {
 	}
 }
 
+func (a *App) getBranchSQLNames() map[int]string {
+	return map[int]string{
+		0: westendName,
+		1: miltonName,
+		2: newsteadName,
+	}
+}
+
 func (a *App) getDatabase() {
 	db, err := connectWithConnector()
 	if err != nil {
@@ -246,7 +254,12 @@ func (a *App) getBranchData(context *gin.Context) {
 		log.Println(err)
 	}
 	defer rows.Close()
-	var data []branchData
+	data := map[string][]branchData{
+		westendName:  make([]branchData, 0),
+		miltonName:   make([]branchData, 0),
+		newsteadName: make([]branchData, 0),
+	}
+	idMap := a.getBranchSQLNames()
 	for rows.Next() {
 		var bd branchData
 		var id, branchId int
@@ -254,7 +267,34 @@ func (a *App) getBranchData(context *gin.Context) {
 		if err != nil {
 			context.IndentedJSON(http.StatusInternalServerError, err)
 		}
-		data = append(data, bd)
+		appended := append(data[idMap[branchId]], bd)
+		data[idMap[branchId]] = appended
+	}
+	context.IndentedJSON(http.StatusOK, data)
+}
+
+func (a *App) getExpectedAttendance(context *gin.Context) {
+	getQuery := "SELECT * FROM `branch-data`.expected_attendance"
+	rows, err := a.db.Query(getQuery)
+	if err != nil {
+		log.Println(err)
+	}
+	defer rows.Close()
+	data := map[string][]expectedAttendance{
+		westendName:  make([]expectedAttendance, 0),
+		miltonName:   make([]expectedAttendance, 0),
+		newsteadName: make([]expectedAttendance, 0),
+	}
+	idMap := a.getBranchSQLNames()
+	for rows.Next() {
+		var ea expectedAttendance
+		var id, branchId int
+		err = rows.Scan(&id, &branchId, &ea.Hour, &ea.Percentage)
+		if err != nil {
+			context.IndentedJSON(http.StatusInternalServerError, err)
+		}
+		appended := append(data[idMap[branchId]], ea)
+		data[idMap[branchId]] = appended
 	}
 	context.IndentedJSON(http.StatusOK, data)
 }
@@ -288,7 +328,7 @@ type branchData struct {
 type expectedAttendance struct {
 	Hour       int     `json:"hour"`
 	Percentage float64 `json:"percantage"`
-	Remaining  float64 `json:"remaining"`
+	//Remaining  float64 `json:"remaining"`
 }
 
 func connectWithConnector() (*sql.DB, error) {
