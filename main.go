@@ -240,10 +240,20 @@ func (a *App) retrieveAndStoreExpectedAttendance(context *gin.Context) {
 }
 
 func (a *App) getBranchData(context *gin.Context) {
-	deleteQuery := "SELECT * FROM `branch-data`.branch_data"
-	data, err := a.db.Query(deleteQuery)
+	getQuery := "SELECT * FROM `branch-data`.branch_data"
+	rows, err := a.db.Query(getQuery)
 	if err != nil {
 		log.Println(err)
+	}
+	defer rows.Close()
+	var data []branchData
+	for rows.Next() {
+		var bd branchData
+		err = rows.Scan(&bd.LastUpdated, &bd.Name, &bd.Status, &bd.CurrentPercentage)
+		if err != nil {
+			context.IndentedJSON(http.StatusInternalServerError, err)
+		}
+		data = append(data, bd)
 	}
 	context.IndentedJSON(http.StatusOK, data)
 }
