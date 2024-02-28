@@ -127,6 +127,7 @@ func newApp(ctx context.Context, port, projectID string) (*App, error) {
 	router.GET("/albums", getAlbums)
 	router.GET("/attendance/store", app.retrieveAndStoreExpectedAttendance)
 	router.GET("/branches/store", app.retrieveAndStoreBranchData)
+	router.GET("/branches", app.getBranchData)
 	app.Server.Handler = router
 
 	return app, nil
@@ -202,6 +203,11 @@ func (a *App) retrieveAndStoreExpectedAttendance(context *gin.Context) {
 	if err != nil {
 		log.Println(err)
 	}
+	deleteQuery = "DELETE FROM `branch-data`.`branch_data`"
+	_, err = a.db.Query(deleteQuery)
+	if err != nil {
+		log.Println(err)
+	}
 
 	// for each branch
 	for name, id := range a.getBranchIds() {
@@ -231,6 +237,15 @@ func (a *App) retrieveAndStoreExpectedAttendance(context *gin.Context) {
 	} else {
 		context.IndentedJSON(http.StatusOK, "Store Succeeded")
 	}
+}
+
+func (a *App) getBranchData(context *gin.Context) {
+	deleteQuery := "SELECT * FROM `branch-data`.branch_data"
+	data, err := a.db.Query(deleteQuery)
+	if err != nil {
+		log.Println(err)
+	}
+	context.IndentedJSON(http.StatusOK, data)
 }
 
 type album struct {
