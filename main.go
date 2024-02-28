@@ -249,7 +249,8 @@ func (a *App) getBranchData(context *gin.Context) {
 	var data []branchData
 	for rows.Next() {
 		var bd branchData
-		err = rows.Scan(&bd.LastUpdated, &bd.Name, &bd.Status, &bd.CurrentPercentage)
+		var id, branchId int
+		err = rows.Scan(&id, &branchId, &bd.LastUpdated, &bd.Name, &bd.Status, &bd.CurrentPercentage)
 		if err != nil {
 			context.IndentedJSON(http.StatusInternalServerError, err)
 		}
